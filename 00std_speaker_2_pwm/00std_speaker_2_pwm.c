@@ -117,10 +117,14 @@ void pwm_init(void) {
 void pwm_setperiod(uint16_t period) {
 
     if(NRF_PWM0->EVENTS_SEQSTARTED[0]==1) {
+        NRF_PWM0->EVENTS_SEQSTARTED[0]=0;
         NRF_PWM0->EVENTS_STOPPED  = 0;
         NRF_PWM0->TASKS_STOP      = 0x00000001;
         while(NRF_PWM0->EVENTS_STOPPED==0);
     }
+
+    // silence: leave the PWM stopped
+    if(period==0) return;
 
     NRF_PWM0->COUNTERTOP          = period;
     pwm_comp[0]                   = period/2;
