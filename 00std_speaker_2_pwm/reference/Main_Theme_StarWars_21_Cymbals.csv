@@ -1,0 +1,10 @@
+note,frequency_hz,duration_ms
+G3,196.0,3889
+silence,0,18333
+G3,196.0,556
+G3,196.0,3889
+silence,0,10555
+G3,196.0,556
+G3,196.0,3333
+silence,0,3333
+G3,196.0,4445
