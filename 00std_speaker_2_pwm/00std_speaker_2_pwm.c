@@ -5,35 +5,14 @@
 // we use a prescaler of 4, so the PWM counter runs at 16MHz/4=4MHz
 // period = (4000000/freq_Hz)
 
-#define NOTE_NONE      0 // 246.94 Hz
-#define NOTE_SI_2  16198 // 246.94 Hz
-#define NOTE_DO_3  15289 // 261.63 Hz
-#define NOTE_RE_3  13621 // 293.66 Hz
-#define NOTE_MI_3  12135 // 329.63 Hz
-#define NOTE_FA_3  11454 // 349.23 Hz
-#define NOTE_SOL_3 10204 // 392.00 Hz
-#define NOTE_LA_3   9091 // 440.00 Hz
-#define NOTE_SI_3   8099 // 493.88 Hz
-#define NOTE_DO_4   7645 // 523.25 Hz
+// the song: an array of (period, duration) pairs, see song.h
+#include "song_starwars.h"
 
-uint16_t song[] = {
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_DO_3, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_LA_3,  NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_SOL_3, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_SOL_3, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_SOL_3, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_SOL_3, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-    NOTE_SI_2, NOTE_MI_3, NOTE_SOL_3, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE, NOTE_NONE,
-};
+#define SONG_LEN      (sizeof(song) / sizeof(song[0]))
+
+// the RTC runs at 32768 Hz: 1 ms = 32.768 ticks
+#define MS_TO_RTC(ms) (((uint32_t)(ms) * 32768) / 1000)
+
 uint16_t beat;
 
 uint16_t pwm_comp[1];
@@ -149,13 +128,20 @@ void rtc_init(void) {
     NVIC_ClearPendingIRQ(RTC0_IRQn);
     NVIC_EnableIRQ(RTC0_IRQn);
 
-    // have RTC tick every second
-    NRF_RTC0->CC[0]                    = 1317;             // 32768==1 s --> 1317==40.1ms
+    // CC[0] is set note by note by song_play_next()
     NRF_RTC0->TASKS_START              = 0x00000001;       // start RTC0
 }
     
+// play the current note, and have the RTC interrupt when its duration is over
+void song_play_next(void) {
+    pwm_setperiod(song[beat].period);
+    NRF_RTC0->CC[0]                    = MS_TO_RTC(song[beat].duration_ms);
+    beat = (beat+1)%SONG_LEN;
+}
+
 int main(void) {
     pwm_init();
+    song_play_next();
     rtc_init();
 
     while(1);
@@ -172,7 +158,6 @@ void RTC0_IRQHandler(void) {
         // clear COUNTER
         NRF_RTC0->TASKS_CLEAR          = 0x00000001;
 
-        pwm_setperiod(song[beat]);
-        beat = (beat+1)%(sizeof(song) / sizeof(uint16_t));
+        song_play_next();
     }
 }
