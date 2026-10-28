@@ -50,6 +50,29 @@ uint16_t beat;
 #define PRESSED_A     0x01
 #define PRESSED_B     0x02
 
+// the LED matrix: LED rc is on when row r is high and column c is low
+const uint8_t LED_ROW_PINS[5]           = { 21, 22, 15, 24, 19 };                  // P0.21, P0.22, P0.15, P0.24, P0.19
+const uint8_t LED_COL_PINS[5]           = { 28, 11, 31,  5, 30 };                  // P0.28, P0.11, P0.31, P1.05, P0.30
+NRF_GPIO_Type* const LED_COL_PORTS[5]   = { NRF_P0, NRF_P0, NRF_P0, NRF_P1, NRF_P0 };
+
+// what the LEDs show, one byte per row (top to bottom), one bit per column:
+// 0x10 is the left column, 0x01 the right one (USB connector at the top)
+uint8_t display[5];
+
+// the digits, 3 columns wide: they go in the 3 right columns
+const uint8_t DIGITS[10][5] = {
+    { 0x7, 0x5, 0x5, 0x5, 0x7 }, // 0  ###  #.#  #.#  #.#  ###
+    { 0x2, 0x6, 0x2, 0x2, 0x7 }, // 1  .#.  ##.  .#.  .#.  ###
+    { 0x7, 0x1, 0x7, 0x4, 0x7 }, // 2  ###  ..#  ###  #..  ###
+    { 0x7, 0x1, 0x3, 0x1, 0x7 }, // 3  ###  ..#  .##  ..#  ###
+    { 0x5, 0x5, 0x7, 0x1, 0x1 }, // 4  #.#  #.#  ###  ..#  ..#
+    { 0x7, 0x4, 0x7, 0x1, 0x7 }, // 5  ###  #..  ###  ..#  ###
+    { 0x7, 0x4, 0x7, 0x5, 0x7 }, // 6  ###  #..  ###  #.#  ###
+    { 0x7, 0x1, 0x1, 0x2, 0x2 }, // 7  ###  ..#  ..#  .#.  .#.
+    { 0x7, 0x5, 0x7, 0x5, 0x7 }, // 8  ###  #.#  ###  #.#  ###
+    { 0x7, 0x5, 0x7, 0x1, 0x7 }, // 9  ###  #.#  ###  ..#  ###
+};
+
 uint16_t pwm_comp[1];
 
 void pwm_init(void) {
@@ -190,9 +213,49 @@ uint8_t buttons_read(void) {
     return pressed;
 }
 
-// busy wait, roughly 10 ms
-void wait_10ms(void) {
-    for(volatile uint32_t i=0; i<64000; i++);
+// show the track number: its last digit on the right, and in the left column
+// one LED (top) for 10, two LEDs for 20
+//   #.###    track 12
+//   ....#
+//   ..###
+//   ..#..
+//   ..###
+void display_track(uint8_t t) {
+    uint8_t r;
+
+    for(r=0; r<5; r++) {
+        display[r] = DIGITS[t%10][r];
+    }
+    if(t>=10) display[0] |= 0x10;
+    if(t>=20) display[1] |= 0x10;
+}
+
+// light the LEDs in display[] for roughly 10 ms: one row at a time, ~2 ms each,
+// switching fast enough that the eye sees them all on
+void display_refresh_10ms(void) {
+    uint8_t r;
+    uint8_t c;
+
+    for(r=0; r<5; r++) {
+        // columns of the LEDs that are on in this row: output, low
+        for(c=0; c<5; c++) {
+            if(display[r] & (0x10>>c)) {
+                LED_COL_PORTS[c]->PIN_CNF[LED_COL_PINS[c]] = 0x00000003;
+                LED_COL_PORTS[c]->OUTCLR                   = (0x00000001 << LED_COL_PINS[c]);
+            }
+        }
+        // row: output, high
+        NRF_P0->PIN_CNF[LED_ROW_PINS[r]]                   = 0x00000003;
+        NRF_P0->OUTSET                                     = (0x00000001 << LED_ROW_PINS[r]);
+
+        for(volatile uint32_t i=0; i<12800; i++);
+
+        // all off: disconnect the row and the columns
+        NRF_P0->PIN_CNF[LED_ROW_PINS[r]]                   = 0x00000002;
+        for(c=0; c<5; c++) {
+            LED_COL_PORTS[c]->PIN_CNF[LED_COL_PINS[c]]     = 0x00000002;
+        }
+    }
 }
 
 // play the current note, and have the RTC interrupt when its duration is over
@@ -244,9 +307,10 @@ int main(void) {
     pwm_init();
     rtc_init();
     buttons_init();
+    display_track(track);
 
     while(1) {
-        wait_10ms();
+        display_refresh_10ms();
 
         // a button bounces for a few ms when pressed or released: ignore the
         // readings until two in a row agree
@@ -262,6 +326,7 @@ int main(void) {
             if(gesture==(PRESSED_A|PRESSED_B)) {
                 // both: next track, which plays right away if we were playing
                 track = (track+1)%NUM_TRACKS;
+                display_track(track);
                 if(playing) song_start();
             } else if(gesture==PRESSED_A) {
                 // A: start
