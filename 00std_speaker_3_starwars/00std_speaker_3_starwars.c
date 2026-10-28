@@ -5,8 +5,35 @@
 // we use a prescaler of 4, so the PWM counter runs at 16MHz/4=4MHz
 // period = (4000000/freq_Hz)
 
-// the track of the MIDI file to play, see the list in songs/songs.h
-#define TRACK 0 // Trumpet
+// the track of the MIDI file to play: uncomment exactly one
+//#define TRACK  0 // Tremolo Strings
+//#define TRACK  1 // Trombone
+//#define TRACK  2 // Brass
+//#define TRACK  3 // French Horn
+#define TRACK  4 // Trumpet
+//#define TRACK  5 // Trumpet 2
+//#define TRACK  6 // Tuba
+//#define TRACK  7 // Tuba 2
+//#define TRACK  8 // Strings
+//#define TRACK  9 // Strings 2
+//#define TRACK 10 // Flute Classic
+//#define TRACK 11 // Piccolo
+//#define TRACK 12 // Oboe
+//#define TRACK 13 // Clarinet
+//#define TRACK 14 // Bassoon
+//#define TRACK 15 // Glock
+//#define TRACK 16 // Concert Harp
+//#define TRACK 17 // Snare
+//#define TRACK 18 // Timpani D
+//#define TRACK 19 // Timpani A
+//#define TRACK 20 // Timpani F
+//#define TRACK 21 // Cymbals
+//#define TRACK 22 // Other Percussion
+//#define TRACK 23 // French Horn Classic
+//#define TRACK 24 // Trombone Classic
+//#define TRACK 25 // Trumpet
+//#define TRACK 26 // Brass
+//#define TRACK 27 // Violin Classic
 
 // the song: an array of (period, duration) pairs, see song.h
 #include "songs/songs.h"
