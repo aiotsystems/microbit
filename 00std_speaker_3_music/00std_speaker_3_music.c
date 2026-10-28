@@ -1,3 +1,4 @@
+#include <nrf.h>
 #include "nrf52833.h"
 
 // period = (16000000/freq_Hz)
@@ -9,11 +10,11 @@
 #include "songs/songs.h"
 
 // the track being played, index in tracks[]; press both buttons for the next one:
-//    0 Tremolo Strings
-//    1 Trombone
-//    2 Brass
-//    3 French Horn
-//    4 Trumpet
+//    0 Trumpet
+//    1 Tremolo Strings
+//    2 Trombone
+//    3 Brass
+//    4 French Horn
 //    5 Trumpet 2
 //    6 Tuba
 //    7 Tuba 2
@@ -37,7 +38,7 @@
 //   25 Trumpet
 //   26 Brass
 //   27 Violin Classic
-volatile uint8_t track = 4; // Trumpet
+volatile uint8_t track = 0; // Trumpet
 
 // the RTC runs at 32768 Hz: 1 ms = 32.768 ticks
 #define MS_TO_RTC(ms) (((uint32_t)(ms) * 32768) / 1000)
@@ -72,6 +73,15 @@ const uint8_t DIGITS[10][5] = {
     { 0x7, 0x5, 0x7, 0x5, 0x7 }, // 8  ###  #.#  ###  #.#  ###
     { 0x7, 0x5, 0x7, 0x1, 0x7 }, // 9  ###  #.#  ###  ..#  ###
 };
+
+// the radio: a frame "PLAY!!" starts playing, "STOP!!" stops, like buttons A and B
+// (6 bytes, the length of the payload of 00std_wireless_tx)
+#define RADIO_NONE    0
+#define RADIO_PLAY    1
+#define RADIO_STOP    2
+
+static uint8_t pdu[2+8];              // header, length, up to 8 bytes of payload
+volatile uint8_t radio_command;       // set by RADIO_IRQHandler, handled by main()
 
 uint16_t pwm_comp[1];
 
@@ -297,16 +307,117 @@ void song_stop(void) {
     NVIC_EnableIRQ(RTC0_IRQn);
 }
 
+// listen, all the time, with the same settings as 00std_wireless_tx
+void radio_init(void) {
+
+    // the radio needs the HF crystal
+    NRF_CLOCK->TASKS_HFCLKSTART = 1;
+    while (NRF_CLOCK->EVENTS_HFCLKSTARTED == 0) {}
+
+    // configure radio
+    NRF_RADIO->MODE          = (  RADIO_MODE_MODE_Ble_LR125Kbit << RADIO_MODE_MODE_Pos);
+    NRF_RADIO->TXPOWER       = (  RADIO_TXPOWER_TXPOWER_Pos8dBm << RADIO_TXPOWER_TXPOWER_Pos);
+    NRF_RADIO->PCNF0         = (                              8 << RADIO_PCNF0_LFLEN_Pos)          |
+                               (                              1 << RADIO_PCNF0_S0LEN_Pos)          |
+                               (                              0 << RADIO_PCNF0_S1LEN_Pos)          |
+                               (                              2 << RADIO_PCNF0_CILEN_Pos)          |
+                               (     RADIO_PCNF0_PLEN_LongRange << RADIO_PCNF0_PLEN_Pos)           |
+                               (                              3 << RADIO_PCNF0_TERMLEN_Pos);
+    NRF_RADIO->PCNF1         = (              (sizeof(pdu) - 2) << RADIO_PCNF1_MAXLEN_Pos)         |
+                               (                              0 << RADIO_PCNF1_STATLEN_Pos)        |
+                               (                              3 << RADIO_PCNF1_BALEN_Pos)          |
+                               (      RADIO_PCNF1_ENDIAN_Little << RADIO_PCNF1_ENDIAN_Pos)         |
+                               (   RADIO_PCNF1_WHITEEN_Disabled << RADIO_PCNF1_WHITEEN_Pos);
+    NRF_RADIO->BASE0         = 0xAAAAAAAAUL;
+    NRF_RADIO->TXADDRESS     = 0UL;
+    NRF_RADIO->RXADDRESSES   = (RADIO_RXADDRESSES_ADDR0_Enabled << RADIO_RXADDRESSES_ADDR0_Pos);
+    NRF_RADIO->TIFS          = 0;
+    NRF_RADIO->CRCCNF        = (         RADIO_CRCCNF_LEN_Three << RADIO_CRCCNF_LEN_Pos)           |
+                               (     RADIO_CRCCNF_SKIPADDR_Skip << RADIO_CRCCNF_SKIPADDR_Pos);
+    NRF_RADIO->CRCINIT       = 0xFFFFUL;
+    NRF_RADIO->CRCPOLY       = 0x00065b; // CRC poly: x^16 + x^12^x^5 + 1
+    NRF_RADIO->FREQUENCY     = 10;
+    NRF_RADIO->PACKETPTR     = (uint32_t)pdu;
+
+    // receive, and go back to receiving after each frame
+    NRF_RADIO->SHORTS = (RADIO_SHORTS_READY_START_Enabled << RADIO_SHORTS_READY_START_Pos) |
+                        (RADIO_SHORTS_END_DISABLE_Enabled << RADIO_SHORTS_END_DISABLE_Pos) |
+                        (RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos);
+
+    NRF_RADIO->INTENCLR = 0xffffffff;
+    NRF_RADIO->INTENSET = (RADIO_INTENSET_DISABLED_Enabled << RADIO_INTENSET_DISABLED_Pos);
+    NVIC_EnableIRQ(RADIO_IRQn);
+
+    NRF_RADIO->TASKS_RXEN    = 1;
+}
+
+// is the payload of the frame received exactly <text>?
+uint8_t radio_received(const char* text, uint8_t len) {
+    uint8_t i;
+
+    if(pdu[1]!=len) return 0;
+    for(i=0; i<len; i++) {
+        if(pdu[2+i]!=text[i]) return 0;
+    }
+    return 1;
+}
+
+// how many times radio_send() sends a frame, in case a board misses one
+#define RADIO_REPEAT 3
+
+// send <text> (6 bytes) RADIO_REPEAT times, back to back (~1 ms each), then go back to listening
+void radio_send(const char* text) {
+    static uint8_t tx_pdu[2+6];
+    uint8_t i;
+    uint8_t n;
+
+    tx_pdu[0] = 0x00; // header
+    tx_pdu[1] = 6;    // length
+    for(i=0; i<6; i++) {
+        tx_pdu[2+i] = text[i];
+    }
+
+    // stop listening, without RADIO_IRQHandler seeing it
+    NVIC_DisableIRQ(RADIO_IRQn);
+    NRF_RADIO->SHORTS        = (RADIO_SHORTS_READY_START_Enabled << RADIO_SHORTS_READY_START_Pos) |
+                               (RADIO_SHORTS_END_DISABLE_Enabled << RADIO_SHORTS_END_DISABLE_Pos);
+    NRF_RADIO->TASKS_DISABLE = 1;
+    while (NRF_RADIO->STATE != RADIO_STATE_STATE_Disabled) {}
+
+    // send: READY->START and END->DISABLE, so the frame is out once DISABLED
+    NRF_RADIO->PACKETPTR       = (uint32_t)tx_pdu;
+    for(n=0; n<RADIO_REPEAT; n++) {
+        NRF_RADIO->EVENTS_DISABLED = 0;
+        NRF_RADIO->TASKS_TXEN      = 1;
+        while (NRF_RADIO->EVENTS_DISABLED == 0) {}
+    }
+
+    // listen again
+    NRF_RADIO->EVENTS_DISABLED = 0;
+    NRF_RADIO->PACKETPTR       = (uint32_t)pdu;
+    NRF_RADIO->SHORTS        = (RADIO_SHORTS_READY_START_Enabled << RADIO_SHORTS_READY_START_Pos) |
+                               (RADIO_SHORTS_END_DISABLE_Enabled << RADIO_SHORTS_END_DISABLE_Pos) |
+                               (RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos);
+    NVIC_ClearPendingIRQ(RADIO_IRQn);
+    NVIC_EnableIRQ(RADIO_IRQn);
+    NRF_RADIO->TASKS_RXEN      = 1;
+}
+
+// how long to wait after A+B for a second A+B (a double press), in loops of ~10 ms
+#define DOUBLE_PRESS_LOOPS 40
+
 int main(void) {
     uint8_t playing  = 0;  // the song does not play until button A is pressed
     uint8_t previous = 0;  // buttons at the previous reading
     uint8_t current;       // buttons now
     uint8_t stable   = 0;  // buttons, debounced: same value at two readings in a row
     uint8_t gesture  = 0;  // all buttons pressed since they were all released
+    uint8_t both     = 0;  // >0 after A+B: loops left to wait for a second A+B
 
     pwm_init();
     rtc_init();
     buttons_init();
+    radio_init();
     display_track(track);
 
     while(1) {
@@ -323,11 +434,22 @@ int main(void) {
         // act once all buttons are released: pressing both never starts at
         // exactly the same time, this way it is not mistaken for A or B alone
         if(stable==0 && gesture!=0) {
-            if(gesture==(PRESSED_A|PRESSED_B)) {
-                // both: next track, which plays right away if we were playing
-                track = (track+1)%NUM_TRACKS;
-                display_track(track);
-                if(playing) song_start();
+            if(gesture==(PRESSED_A|PRESSED_B) && both>0) {
+                // both, twice in a row (hidden): play or stop all the boards
+                // over the radio, and this one, which does not hear itself
+                both = 0;
+                if(playing) {
+                    radio_send("STOP!!");
+                    song_stop();
+                    playing = 0;
+                } else {
+                    radio_send("PLAY!!");
+                    song_start();
+                    playing = 1;
+                }
+            } else if(gesture==(PRESSED_A|PRESSED_B)) {
+                // both: wait and see whether a second one follows
+                both = DOUBLE_PRESS_LOOPS;
             } else if(gesture==PRESSED_A) {
                 // A: start
                 song_start();
@@ -339,6 +461,24 @@ int main(void) {
             }
             gesture = 0;
         }
+
+        // no second A+B pressed in time (the wait pauses while a button is held):
+        // it was a single one, next track, which plays right away if we were playing
+        if(both>0 && gesture==0 && --both==0) {
+            track = (track+1)%NUM_TRACKS;
+            display_track(track);
+            if(playing) song_start();
+        }
+
+        // the same as buttons A and B, sent over the radio
+        if(radio_command==RADIO_PLAY) {
+            song_start();
+            playing = 1;
+        } else if(radio_command==RADIO_STOP) {
+            song_stop();
+            playing = 0;
+        }
+        radio_command = RADIO_NONE;
     }
 }
 
@@ -354,5 +494,17 @@ void RTC0_IRQHandler(void) {
         NRF_RTC0->TASKS_CLEAR          = 0x00000001;
 
         song_play_next();
+    }
+}
+
+void RADIO_IRQHandler(void) {
+    if (NRF_RADIO->EVENTS_DISABLED) {
+        NRF_RADIO->EVENTS_DISABLED = 0;
+
+        // only note the command: main() acts on it, as it does for the buttons
+        if (NRF_RADIO->CRCSTATUS == RADIO_CRCSTATUS_CRCSTATUS_CRCOk) {
+            if      (radio_received("PLAY!!", 6)) radio_command = RADIO_PLAY;
+            else if (radio_received("STOP!!", 6)) radio_command = RADIO_STOP;
+        }
     }
 }

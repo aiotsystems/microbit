@@ -25,22 +25,21 @@ def note_name(freq):
     return f"{NOTES[midi % 12]}{midi // 12 - 1}"
 
 def read_tracks(songs_dir):
-    """Return [{index, name, notes: [(period, duration_ms)], ...statistics}], sorted by index."""
-    names = dict(re.findall(r'\[\s*(\d+)\] = TRACK\(\w+, "([^"]*)"\)',
-                            open(os.path.join(songs_dir, 'songs.h')).read()))
+    """Return [{index, name, notes: [(period, duration_ms)], ...statistics}], sorted by index.
+
+    index is the track number on the boards: its place in tracks[], in songs.h."""
+    entries = re.findall(r'\[\s*(\d+)\] = TRACK\((\w+), "([^"]*)"\)',
+                         open(os.path.join(songs_dir, 'songs.h')).read())
     tracks = []
-    for header in sorted(os.listdir(songs_dir)):
-        m = re.match(r'song_(\d+)_(.*)\.h$', header)
-        if not m:
-            continue
-        text = open(os.path.join(songs_dir, header)).read()
+    for index, array, name in entries:
+        text = open(os.path.join(songs_dir, array + '.h')).read()
         notes = [(int(p), int(d)) for p, d in re.findall(r'\{\s*(\d+),\s*(\d+)\s*\}', text)]
         played = [(p, d) for p, d in notes if p]
         freqs = [PWM_CLOCK_HZ / p for p, _ in played]
         total = sum(d for _, d in notes)
         tracks.append({
-            'index':    int(m.group(1)),
-            'name':     names.get(m.group(1).lstrip('0') or '0', m.group(2)),
+            'index':    int(index),
+            'name':     name,
             'notes':    notes,
             'count':    len(played),
             'pitches':  len({p for p, _ in played}),
