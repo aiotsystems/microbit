@@ -16,6 +16,9 @@ LEDs for 20. After a reset, the board is silent, on track 0 (Trumpet).
     ..#..
     ..###
 
+While playing, the LEDs dance instead: a new random pattern at each note, all
+off during the silences. The track number comes back when the board stops.
+
 Buttons:
 - A        starts playing the track, from the beginning
 - B        stops playing
@@ -79,6 +82,14 @@ when it is reached, RTC0_IRQHandler plays the next note (song_play_next()). At
 the end of the track, the counter goes back to 0. Switching track while playing
 (song_switch()) reads the counter and plays the note of the new track at that
 time, for what is left of it.
+
+The LEDs. leds_refresh_10ms() shows whatever is in display[], one row at a time.
+Stopped, display[] holds the track number (leds_display_track()). Playing,
+song_play_next() calls leds_display_note() at each note: 25 random bits, 5 per
+row, or 0 for a silence. The random bits come from a xorshift32 generator
+(random_get(), a few instructions, fine in RTC0_IRQHandler), seeded at startup
+from the hardware random number generator (random_init()), so that every board
+dances its own way.
 
 The main loop runs every ~10 ms, the time leds_refresh_10ms() takes to light
 the 5 rows of LEDs one after the other (~2 ms each). It then reads the buttons,
@@ -156,6 +167,8 @@ typedef struct {
     // the LEDs: what they show, one byte per row (top to bottom), one bit per column:
     // 0x10 is the left column, 0x01 the right one (USB connector at the top)
     uint8_t          display[5];
+    // the random patterns of the LEDs while playing
+    uint32_t         random;          // state of the pseudo-random generator, see random_get()
     // the radio
     uint8_t          rx_pdu[2+8];     // received: header, length, up to 8 bytes of payload
     uint8_t          tx_pdu[2+6];     // to send: header, length, 6 bytes of payload
@@ -173,7 +186,11 @@ void    song_play_next(void);
 void    song_stop(void);
 // leds
 void    leds_display_track(uint8_t track);
+void    leds_display_note(uint16_t period);
 void    leds_refresh_10ms(void);
+// random
+void    random_init(void);
+uint32_t random_get(void);
 // buttons
 void    buttons_init(void);
 uint8_t buttons_read(void);
@@ -204,6 +221,7 @@ int main(void) {
     app_vars.track = 0; // Trumpet
 
     clocks_init();
+    random_init();
     pwm_init();
     rtc_init();
     buttons_init();
@@ -340,13 +358,14 @@ void song_play_next(void) {
     }
 
     pwm_setperiod(t->notes[app_vars.beat].period);
+    leds_display_note(t->notes[app_vars.beat].period);
     app_vars.next_ms                  += t->notes[app_vars.beat].duration_ms;
     NRF_RTC0->CC[0]                    = MS_TO_RTC(app_vars.next_ms);
     app_vars.beat++;
 }
 
 void song_stop(void) {
-    // stop playing, silence the speaker
+    // stop playing, silence the speaker, show the track number again
 
     NVIC_DisableIRQ(RTC0_IRQn);
     NRF_RTC0->TASKS_STOP               = 0x00000001;
@@ -354,6 +373,7 @@ void song_stop(void) {
     NVIC_ClearPendingIRQ(RTC0_IRQn);
 
     pwm_setperiod(0);
+    leds_display_track(app_vars.track);
 
     NVIC_EnableIRQ(RTC0_IRQn);
 }
@@ -374,6 +394,20 @@ void leds_display_track(uint8_t track) {
     }
     if(track>=10) app_vars.display[0] |= 0x10;
     if(track>=20) app_vars.display[1] |= 0x10;
+}
+
+void leds_display_note(uint16_t period) {
+    // while playing, the LEDs dance: a new random pattern of the 25 LEDs at each
+    // note, all off during a silence (period 0)
+
+    uint32_t bits;
+    uint8_t  r;
+
+    bits = (period==0) ? 0 : random_get();
+    for(r=0; r<5; r++) {
+        app_vars.display[r] = bits & 0x1F;   // 5 bits per row
+        bits >>= 5;
+    }
 }
 
 void leds_refresh_10ms(void) {
@@ -403,6 +437,34 @@ void leds_refresh_10ms(void) {
             LED_COL_PORTS[c]->PIN_CNF[LED_COL_PINS[c]]     = 0x00000002;
         }
     }
+}
+
+void random_init(void) {
+    // seed the pseudo-random generator with 4 bytes of the hardware random number
+    // generator (RNG): every board dances its own way
+
+    uint8_t i;
+
+    NRF_RNG->CONFIG             = 0x00000001;   // bias correction
+    NRF_RNG->TASKS_START        = 0x00000001;
+    for(i=0; i<4; i++) {
+        NRF_RNG->EVENTS_VALRDY  = 0x00000000;
+        while (NRF_RNG->EVENTS_VALRDY == 0) {}
+        app_vars.random         = (app_vars.random << 8) | NRF_RNG->VALUE;
+    }
+    NRF_RNG->TASKS_STOP         = 0x00000001;
+
+    // xorshift never leaves 0
+    if(app_vars.random==0) app_vars.random = 1;
+}
+
+uint32_t random_get(void) {
+    // a pseudo-random number (xorshift32): a few instructions, fine in an interrupt
+
+    app_vars.random ^= app_vars.random << 13;
+    app_vars.random ^= app_vars.random >> 17;
+    app_vars.random ^= app_vars.random << 5;
+    return app_vars.random;
 }
 
 void buttons_init(void) {
