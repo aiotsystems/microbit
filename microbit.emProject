@@ -545,7 +545,7 @@
       <configuration Name="Common" filter="c;cpp;cxx;cc;h;s;asm;inc" />
       <file file_name="00std_speaker_3_starwars.c" />
       <file file_name="song.h" />
-      <file file_name="song_starwars.h" />
+      <file file_name="songs/songs.h" />
     </folder>
     <folder Name="System Files">
       <file file_name="../common/system/nRF/Source/nrf52833_Vectors.s">

@@ -5,8 +5,11 @@
 // we use a prescaler of 4, so the PWM counter runs at 16MHz/4=4MHz
 // period = (4000000/freq_Hz)
 
+// the track of the MIDI file to play, see the list in songs/songs.h
+#define TRACK 0 // Trumpet
+
 // the song: an array of (period, duration) pairs, see song.h
-#include "song_starwars.h"
+#include "songs/songs.h"
 
 #define SONG_LEN      (sizeof(song) / sizeof(song[0]))
 
