@@ -15,7 +15,7 @@
 
 #include "../song.h"
 
-const note_t song[] = {
+const note_t song_16_concert_harp[] = {
     // period, duration_ms
     {     0,  6076 }, // silence
     { 22907,    35 }, // F2

@@ -5,40 +5,39 @@
 // we use a prescaler of 4, so the PWM counter runs at 16MHz/4=4MHz
 // period = (4000000/freq_Hz)
 
-// the track of the MIDI file to play: uncomment exactly one
-//#define TRACK  0 // Tremolo Strings
-//#define TRACK  1 // Trombone
-//#define TRACK  2 // Brass
-//#define TRACK  3 // French Horn
-#define TRACK  4 // Trumpet
-//#define TRACK  5 // Trumpet 2
-//#define TRACK  6 // Tuba
-//#define TRACK  7 // Tuba 2
-//#define TRACK  8 // Strings
-//#define TRACK  9 // Strings 2
-//#define TRACK 10 // Flute Classic
-//#define TRACK 11 // Piccolo
-//#define TRACK 12 // Oboe
-//#define TRACK 13 // Clarinet
-//#define TRACK 14 // Bassoon
-//#define TRACK 15 // Glock
-//#define TRACK 16 // Concert Harp
-//#define TRACK 17 // Snare
-//#define TRACK 18 // Timpani D
-//#define TRACK 19 // Timpani A
-//#define TRACK 20 // Timpani F
-//#define TRACK 21 // Cymbals
-//#define TRACK 22 // Other Percussion
-//#define TRACK 23 // French Horn Classic
-//#define TRACK 24 // Trombone Classic
-//#define TRACK 25 // Trumpet
-//#define TRACK 26 // Brass
-//#define TRACK 27 // Violin Classic
-
-// the song: an array of (period, duration) pairs, see song.h
+// all the tracks of the MIDI file, in flash: tracks[], see song.h
 #include "songs/songs.h"
 
-#define SONG_LEN      (sizeof(song) / sizeof(song[0]))
+// the track being played, index in tracks[]; can be changed at any time:
+//    0 Tremolo Strings
+//    1 Trombone
+//    2 Brass
+//    3 French Horn
+//    4 Trumpet
+//    5 Trumpet 2
+//    6 Tuba
+//    7 Tuba 2
+//    8 Strings
+//    9 Strings 2
+//   10 Flute Classic
+//   11 Piccolo
+//   12 Oboe
+//   13 Clarinet
+//   14 Bassoon
+//   15 Glock
+//   16 Concert Harp
+//   17 Snare
+//   18 Timpani D
+//   19 Timpani A
+//   20 Timpani F
+//   21 Cymbals
+//   22 Other Percussion
+//   23 French Horn Classic
+//   24 Trombone Classic
+//   25 Trumpet
+//   26 Brass
+//   27 Violin Classic
+volatile uint8_t track = 4; // Trumpet
 
 // the RTC runs at 32768 Hz: 1 ms = 32.768 ticks
 #define MS_TO_RTC(ms) (((uint32_t)(ms) * 32768) / 1000)
@@ -164,9 +163,14 @@ void rtc_init(void) {
     
 // play the current note, and have the RTC interrupt when its duration is over
 void song_play_next(void) {
-    pwm_setperiod(song[beat].period);
-    NRF_RTC0->CC[0]                    = MS_TO_RTC(song[beat].duration_ms);
-    beat = (beat+1)%SONG_LEN;
+    const track_t* t = &tracks[track];
+
+    // wrap around at the end of the track (or if track changed for a shorter one)
+    if(beat>=t->len) beat = 0;
+
+    pwm_setperiod(t->notes[beat].period);
+    NRF_RTC0->CC[0]                    = MS_TO_RTC(t->notes[beat].duration_ms);
+    beat++;
 }
 
 int main(void) {

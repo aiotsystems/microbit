@@ -15,7 +15,7 @@
 
 #include "../song.h"
 
-const note_t song[] = {
+const note_t song_15_glock[] = {
     // period, duration_ms
     {  1073,    69 }, // A#7
     {  1432,    70 }, // F7

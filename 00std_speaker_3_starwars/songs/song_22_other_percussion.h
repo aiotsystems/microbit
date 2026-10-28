@@ -13,7 +13,7 @@
 
 #include "../song.h"
 
-const note_t song[] = {
+const note_t song_22_other_percussion[] = {
     // period, duration_ms
     {     0, 23889 }, // silence
     {  3034,  1667 }, // E6

@@ -15,7 +15,7 @@
 
 #include "../song.h"
 
-const note_t song[] = {
+const note_t song_23_french_horn_classic[] = {
     // period, duration_ms
     {     0,   556 }, // silence
     { 17161,    69 }, // A#3

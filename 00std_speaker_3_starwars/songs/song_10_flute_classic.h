@@ -15,7 +15,7 @@
 
 #include "../song.h"
 
-const note_t song[] = {
+const note_t song_10_flute_classic[] = {
     // period, duration_ms
     {  2145,   278 }, // A#6
     {     0,  5833 }, // silence

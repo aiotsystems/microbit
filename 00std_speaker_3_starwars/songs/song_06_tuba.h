@@ -15,7 +15,7 @@
 
 #include "../song.h"
 
-const note_t song[] = {
+const note_t song_06_tuba[] = {
     // period, duration_ms
     { 17161,   556 }, // A#1
     {     0,  3888 }, // silence

@@ -15,7 +15,7 @@
 
 #include "../song.h"
 
-const note_t song[] = {
+const note_t song_00_tremolo_strings[] = {
     // period, duration_ms
     {  4290,  1944 }, // A#5
     {  4290,  4167 }, // A#5

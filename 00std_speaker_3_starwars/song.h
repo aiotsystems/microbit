@@ -11,4 +11,11 @@ typedef struct {
     uint16_t duration_ms;
 } note_t;
 
+// one track of the MIDI file: its notes, stored in flash
+typedef struct {
+    const note_t* notes;
+    uint16_t      len;     // number of notes
+    const char*   name;    // the instrument
+} track_t;
+
 #endif
