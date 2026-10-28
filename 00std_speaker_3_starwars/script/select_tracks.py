@@ -129,7 +129,7 @@ class App:
         self.selected = set()
         if os.path.exists(selection_path):
             self.selected = set(json.load(open(selection_path))['tracks'])
-        root.title('Music: pick the tracks for the micro:bit boards')
+        root.title('Star Wars: pick the tracks for the micro:bit boards')
 
         self.tree = ttk.Treeview(root, columns=[c[0] for c in self.COLUMNS], show='headings',
                                  height=len(tracks), selectmode='browse')

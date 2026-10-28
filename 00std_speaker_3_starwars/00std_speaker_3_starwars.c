@@ -1,5 +1,5 @@
 /*
-Music: an orchestra of micro:bit boards, each playing one instrument of a piece
+Star Wars: an orchestra of micro:bit boards, each playing one instrument of a piece
 (the Star Wars main theme), all in sync.
 
 =========================== user guide =========================================

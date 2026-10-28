@@ -493,7 +493,7 @@
       <file file_name="../common/system/SEGGER_THUMB_Startup.s" />
     </folder>
   </project>
-  <project Name="00std_speaker_3_music">
+  <project Name="00std_speaker_3_starwars">
     <configuration
       LIBRARY_IO_TYPE="RTT"
       Name="Common"
@@ -523,7 +523,7 @@
       link_linker_script_file="$(ProjectDir)/../common/system/nRF_Flash_Variant1.icf"
       linker_memory_map_file="$(ProjectDir)/../common/system/nRF52833_xxAA_MemoryMap.xml"
       macros="DeviceHeaderFile=$(PackagesDir)/../common/system/nRF/Device/Include/nrf.h;DeviceSystemFile=$(PackagesDir)/../common/system/nRF/Device/Source/system_nrf52.c;DeviceVectorsFile=$(PackagesDir)/../common/system/nRF/Source/nrf52833_Vectors.s;DeviceFamily=nRF;Target=nRF52833_xxAA"
-      project_directory="00std_speaker_3_music"
+      project_directory="00std_speaker_3_starwars"
       project_type="Executable"
       target_reset_script="Reset();"
       target_trace_initialize_script="EnableTrace(&quot;$(TraceInterfaceType)&quot;)" />
@@ -543,7 +543,7 @@
     </folder>
     <folder Name="Source Files">
       <configuration Name="Common" filter="c;cpp;cxx;cc;h;s;asm;inc" />
-      <file file_name="00std_speaker_3_music.c" />
+      <file file_name="00std_speaker_3_starwars.c" />
       <file file_name="song.h" />
       <file file_name="songs/songs.h" />
     </folder>
