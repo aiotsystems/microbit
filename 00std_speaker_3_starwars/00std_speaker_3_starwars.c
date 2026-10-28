@@ -8,7 +8,7 @@
 // all the tracks of the MIDI file, in flash: tracks[], see song.h
 #include "songs/songs.h"
 
-// the track being played, index in tracks[]; can be changed at any time:
+// the track being played, index in tracks[]; press both buttons for the next one:
 //    0 Tremolo Strings
 //    1 Trombone
 //    2 Brass
@@ -43,6 +43,12 @@ volatile uint8_t track = 4; // Trumpet
 #define MS_TO_RTC(ms) (((uint32_t)(ms) * 32768) / 1000)
 
 uint16_t beat;
+
+// the buttons, low when pressed
+#define BUTTON_A      14 // P0.14
+#define BUTTON_B      23 // P0.23
+#define PRESSED_A     0x01
+#define PRESSED_B     0x02
 
 uint16_t pwm_comp[1];
 
@@ -157,15 +163,43 @@ void rtc_init(void) {
     NVIC_ClearPendingIRQ(RTC0_IRQn);
     NVIC_EnableIRQ(RTC0_IRQn);
 
-    // CC[0] is set note by note by song_play_next()
-    NRF_RTC0->TASKS_START              = 0x00000001;       // start RTC0
+    // CC[0] is set note by note by song_play_next(), RTC0 is started by song_start()
 }
-    
+
+void buttons_init(void) {
+
+    // configure P0.14 (button A) and P0.23 (button B) as inputs, the board has the pull-ups
+    //  3           2            1           0
+    // 1098 7654 3210 9876 5432 1098 7654 3210
+    // .... .... .... .... .... .... .... ...A A: DIR:     0=Input
+    // .... .... .... .... .... .... .... ..B. B: INPUT:   0=Connect
+    // .... .... .... .... .... .... .... CC.. C: PULL:    0=Disabled
+    // .... .... .... .... .... .DDD .... .... D: DRIVE:   0=S0S1
+    // .... .... .... ..EE .... .... .... .... E: SENSE:   0=Disabled
+    // xxxx xxxx xxxx xx00 xxxx x000 xxxx 0000 
+    //    0    0    0    0    0    0    0    0 0x00000000
+    NRF_P0->PIN_CNF[BUTTON_A]     = 0x00000000;
+    NRF_P0->PIN_CNF[BUTTON_B]     = 0x00000000;
+}
+
+// which buttons are pressed right now (PRESSED_A, PRESSED_B, or both)
+uint8_t buttons_read(void) {
+    uint8_t pressed = 0;
+    if((NRF_P0->IN & (1<<BUTTON_A))==0) pressed |= PRESSED_A;
+    if((NRF_P0->IN & (1<<BUTTON_B))==0) pressed |= PRESSED_B;
+    return pressed;
+}
+
+// busy wait, roughly 10 ms
+void wait_10ms(void) {
+    for(volatile uint32_t i=0; i<64000; i++);
+}
+
 // play the current note, and have the RTC interrupt when its duration is over
 void song_play_next(void) {
     const track_t* t = &tracks[track];
 
-    // wrap around at the end of the track (or if track changed for a shorter one)
+    // wrap around at the end of the track
     if(beat>=t->len) beat = 0;
 
     pwm_setperiod(t->notes[beat].period);
@@ -173,12 +207,74 @@ void song_play_next(void) {
     beat++;
 }
 
-int main(void) {
-    pwm_init();
-    song_play_next();
-    rtc_init();
+// play the current track from its beginning
+void song_start(void) {
+    NVIC_DisableIRQ(RTC0_IRQn);
+    NRF_RTC0->TASKS_STOP               = 0x00000001;
+    NRF_RTC0->TASKS_CLEAR              = 0x00000001;
+    NRF_RTC0->EVENTS_COMPARE[0]        = 0x00000000;
+    NVIC_ClearPendingIRQ(RTC0_IRQn);
 
-    while(1);
+    beat = 0;
+    song_play_next();
+
+    NRF_RTC0->TASKS_START              = 0x00000001;
+    NVIC_EnableIRQ(RTC0_IRQn);
+}
+
+// stop playing, silence the speaker
+void song_stop(void) {
+    NVIC_DisableIRQ(RTC0_IRQn);
+    NRF_RTC0->TASKS_STOP               = 0x00000001;
+    NRF_RTC0->EVENTS_COMPARE[0]        = 0x00000000;
+    NVIC_ClearPendingIRQ(RTC0_IRQn);
+
+    pwm_setperiod(0);
+
+    NVIC_EnableIRQ(RTC0_IRQn);
+}
+
+int main(void) {
+    uint8_t playing  = 0;  // the song does not play until button A is pressed
+    uint8_t previous = 0;  // buttons at the previous reading
+    uint8_t current;       // buttons now
+    uint8_t stable   = 0;  // buttons, debounced: same value at two readings in a row
+    uint8_t gesture  = 0;  // all buttons pressed since they were all released
+
+    pwm_init();
+    rtc_init();
+    buttons_init();
+
+    while(1) {
+        wait_10ms();
+
+        // a button bounces for a few ms when pressed or released: ignore the
+        // readings until two in a row agree
+        current  = buttons_read();
+        if(current==previous) stable = current;
+        previous = current;
+
+        gesture |= stable;
+
+        // act once all buttons are released: pressing both never starts at
+        // exactly the same time, this way it is not mistaken for A or B alone
+        if(stable==0 && gesture!=0) {
+            if(gesture==(PRESSED_A|PRESSED_B)) {
+                // both: next track, which plays right away if we were playing
+                track = (track+1)%NUM_TRACKS;
+                if(playing) song_start();
+            } else if(gesture==PRESSED_A) {
+                // A: start
+                song_start();
+                playing = 1;
+            } else {
+                // B: stop
+                song_stop();
+                playing = 0;
+            }
+            gesture = 0;
+        }
+    }
 }
 
 void RTC0_IRQHandler(void) {
