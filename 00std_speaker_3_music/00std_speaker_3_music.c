@@ -39,16 +39,16 @@ it lists them, plays them on the computer alone or together, and saves a
 selection.
 
 The tracks:
-     0 Trumpet               10 Flute Classic       20 Timpani F
-     1 Tremolo Strings       11 Piccolo             21 Cymbals
-     2 Trombone              12 Oboe                22 Other Percussion
-     3 Brass                 13 Clarinet            23 French Horn Classic
-     4 French Horn           14 Bassoon             24 Trombone Classic
-     5 Trumpet 2             15 Glock               25 Trumpet
-     6 Tuba                  16 Concert Harp        26 Brass
-     7 Tuba 2                17 Snare               27 Violin Classic
-     8 Strings               18 Timpani D
-     9 Strings 2             19 Timpani A
+     0 Trumpet             10 Piccolo             20 Timpani F
+     1 Tremolo Strings     11 Oboe                21 Cymbals
+     2 Trombone            12 Clarinet            22 Other Percussion
+     3 Brass               13 Bassoon             23 French Horn Classic
+     4 French Horn         14 Concert Harp        24 Trombone Classic
+     5 Tuba                15 Glock               25 Trumpet
+     6 Tuba 2              16 Trumpet 2           26 Brass
+     7 Strings             17 Snare               27 Violin Classic
+     8 Strings 2           18 Timpani D
+     9 Flute Classic       19 Timpani A
 
 =========================== implementation =====================================
 
@@ -60,8 +60,7 @@ into C:
   note_t { period, duration_ms } (see song.h), and songs/songs.h, which lists
   them all in tracks[] (track_t: notes, number of notes, name). It pads every
   track with silence to the length of the longest one, so they loop together,
-  and puts the tracks of FIRST first (the trumpet is track 0). All 28 tracks
-  take ~33 kB of flash.
+  and orders them as in ORDER. All 28 tracks take ~33 kB of flash.
 
 The sound. PWM0 drives the speaker (P0.00) with a square wave, duty cycle 50%
 (pwm_comp = period/2). The PWM counter runs at 16 MHz with a prescaler of 4,
