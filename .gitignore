@@ -8,6 +8,10 @@
 /00std_ringbit/Output/
 /00std_speaker_1_cpu/Output/
 /00std_speaker_2_pwm/Output/
+/00std_speaker_3_starwars/Output/
 /00std_wireless_rx/Output/
 /00std_wireless_tx/Output/
 /00std_xgo/Output/
+
+# regenerated from the MIDI file by script/midi_to_csv.py
+/00std_speaker_3_starwars/reference/*.csv
